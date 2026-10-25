@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.LocalVariableNode;
 import org.objectweb.asm.tree.MethodNode;
 
@@ -12,9 +13,9 @@ public class LVTLvt extends LVTRenamer
     private MethodNode lastMethod = null;
     private Map<Integer, Integer> vers = null;
 
-    public LVTLvt(ClassVisitor cn)
+    public LVTLvt(ClassVisitor cn, ClassNode node)
     {
-        super(cn);
+        super(cn, node);
     }
 
     @Override

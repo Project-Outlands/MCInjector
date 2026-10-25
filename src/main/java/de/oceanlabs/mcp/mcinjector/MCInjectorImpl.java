@@ -1,12 +1,13 @@
 package de.oceanlabs.mcp.mcinjector;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.lang.reflect.Field;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -25,7 +26,6 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
-import org.objectweb.asm.tree.MethodNode;
 
 import de.oceanlabs.mcp.mcinjector.adaptors.AccessFixer;
 import de.oceanlabs.mcp.mcinjector.adaptors.ApplyMap;
@@ -42,6 +42,12 @@ import de.oceanlabs.mcp.mcinjector.lvt.LVTStrip;
 
 public class MCInjectorImpl
 {
+    private static final OutputStream NULL_STREAM = new OutputStream()
+    {
+        @Override public void write(int b) {}
+        @Override public void write(byte[] b, int off, int len) {}
+    };
+
     public LVTNaming naming = LVTNaming.STRIP;
     private Map<String, List<String>> abstractParameters = new HashMap<>();
 
@@ -83,9 +89,10 @@ public class MCInjectorImpl
     private void processJar(Path inFile, Path outFile) throws IOException
     {
         Set<String> entries = new HashSet<>();
-        try (ZipInputStream inJar = new ZipInputStream(Files.newInputStream(inFile)))
+        byte[] data = new byte[4096];
+        try (ZipInputStream inJar = new ZipInputStream(new BufferedInputStream(Files.newInputStream(inFile))))
         {
-            try (ZipOutputStream outJar = new ZipOutputStream(outFile == null ? new ByteArrayOutputStream() : Files.newOutputStream(outFile)))
+            try (ZipOutputStream outJar = new ZipOutputStream(outFile == null ? NULL_STREAM : new BufferedOutputStream(Files.newOutputStream(outFile))))
             {
                 for (ZipEntry entry = inJar.getNextEntry(); entry != null; entry = inJar.getNextEntry())
                 {
@@ -93,23 +100,20 @@ public class MCInjectorImpl
 
                     if (entry.isDirectory())
                     {
-                        outJar.putNextEntry(new JarEntry(entryName));
+                        JarEntry dir = new JarEntry(entryName);
+                        dir.setTime(0); //Stabilize time.
+                        outJar.putNextEntry(dir);
                         outJar.closeEntry();
                         continue;
                     }
 
-                    byte[] data = new byte[4096];
                     ByteArrayOutputStream entryBuffer = new ByteArrayOutputStream();
 
                     int len;
-                    do
+                    while ((len = inJar.read(data)) != -1)
                     {
-                        len = inJar.read(data);
-                        if (len > 0)
-                        {
-                            entryBuffer.write(data, 0, len);
-                        }
-                    } while (len != -1);
+                        entryBuffer.write(data, 0, len);
+                    }
 
                     byte[] entryData = entryBuffer.toByteArray();
 
@@ -160,97 +164,48 @@ public class MCInjectorImpl
         ClassNode cn = new ClassNode();
 
         ClassVisitor ca = cn;
-        if (readOnly)
+        ca = new ApplyMap(this, ca, cn);
+
+        switch (naming)
         {
+            case STRIP:      ca = new LVTStrip     (ca, cn); break;
+            case FERNFLOWER: ca = new LVTFernflower(ca, cn); break;
+            case LVT:        ca = new LVTLvt       (ca, cn); break;
         }
-        else
-        {
-            ca = new ApplyMap(this, ca);
 
-            switch (naming)
-            {
-                case STRIP:      ca = new LVTStrip     (ca); break;
-                case FERNFLOWER: ca = new LVTFernflower(ca); break;
-                case LVT:        ca = new LVTLvt       (ca); break;
-            }
+        ca = new AccessFixer(ca);
 
-            ca = new AccessFixer(ca);
-
-            ca = new ParameterAnnotationFixer(ca, this);
-            ca = new InnerClassInitAdder(ca);
-            ca = new ClassInitAdder(ca);
-        }
+        ca = new ParameterAnnotationFixer(ca, cn);
+        ca = new InnerClassInitAdder(ca);
+        ca = new ClassInitAdder(ca);
 
         ca = new ClassVisitor(Opcodes.ASM9, ca) //Top level, so we can print the logs.
         {
             @Override
             public void visit(int version, int access, String name, String signature, String superName, String[] interfaces)
             {
-                MCInjector.LOG.log(Level.FINE, "Class: " + name + " Extends: " + superName);
+                if (MCInjector.LOG.isLoggable(Level.FINE))
+                    MCInjector.LOG.log(Level.FINE, "Class: " + name + " Extends: " + superName);
                 super.visit(version, access, name, signature, superName, interfaces);
             }
 
             @Override
             public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions)
             {
-                MCInjector.LOG.log(Level.FINE, "  Name: " + name + " Desc: " + desc + " Sig: " + signature);
+                if (MCInjector.LOG.isLoggable(Level.FINE))
+                    MCInjector.LOG.log(Level.FINE, "  Name: " + name + " Desc: " + desc + " Sig: " + signature);
                 return super.visitMethod(access, name, desc, signature, exceptions);
             }
         };
 
         cr.accept(ca, 0);
 
+        if (readOnly)
+            return cls;
+
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
         cn.accept(writer);
         return writer.toByteArray();
-    }
-
-    private static Field field_mv;
-    public static MethodNode getMethodNode(MethodVisitor mv)
-    {
-        try
-        {
-            if (field_mv == null)
-            {
-                field_mv = MethodVisitor.class.getDeclaredField("mv");
-                field_mv.setAccessible(true);
-            }
-            MethodVisitor tmp = mv;
-            while (!(tmp instanceof MethodNode) && tmp != null)
-                tmp = (MethodVisitor)field_mv.get(tmp);
-            return (MethodNode)tmp;
-        }
-        catch (Exception e)
-        {
-            if (e instanceof RuntimeException)
-                throw (RuntimeException)e;
-            throw new RuntimeException(e);
-
-        }
-    }
-
-    private static Field field_cv;
-    public static ClassNode getClassNode(ClassVisitor cv)
-    {
-        try
-        {
-            if (field_cv == null)
-            {
-                field_cv = ClassVisitor.class.getDeclaredField("cv");
-                field_cv.setAccessible(true);
-            }
-            ClassVisitor tmp = cv;
-            while (!(tmp instanceof ClassNode) && tmp != null)
-                tmp = (ClassVisitor)field_cv.get(tmp);
-            return (ClassNode)tmp;
-        }
-        catch (Exception e)
-        {
-            if (e instanceof RuntimeException)
-                throw (RuntimeException)e;
-            throw new RuntimeException(e);
-
-        }
     }
 
     public void storeAbstractParameters(String className, String name, String desc, List<String> params)

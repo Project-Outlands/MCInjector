@@ -24,6 +24,7 @@ public enum Constructors
     {
         this.fromDesc.clear();
         this.fromID.clear();
+        this.maxID = 0;
         try
         {
             MCInjector.LOG.fine("Loading Constructors from: " + file);
@@ -34,8 +35,22 @@ public enum Constructors
                     return;
 
                 String[] parts = line.split(" " );
-                int id = Integer.parseInt(parts[0]);
-                MCInjector.LOG.fine("    Constructor ID loaded " + id + " " + parts[0] + " " + parts[1]);
+                if (parts.length < 3)
+                {
+                    MCInjector.LOG.warning("    Illegal Constructor Config Line: " + line);
+                    return;
+                }
+                int id;
+                try
+                {
+                    id = Integer.parseInt(parts[0]);
+                }
+                catch (NumberFormatException e)
+                {
+                    MCInjector.LOG.warning("    Illegal Constructor Config Line: " + line);
+                    return;
+                }
+                MCInjector.LOG.fine("    Constructor ID loaded " + id + " " + parts[1] + " " + parts[2]);
                 this.setID(parts[1], parts[2], id);
             });
         }
@@ -56,7 +71,7 @@ public enum Constructors
             .sorted((e1, e2) -> e1.getKey().compareTo(e2.getKey()))
             .map(e -> e.getKey() + " " + e.getValue())
             .collect(Collectors.toList());
-            Files.write(file, String.join("\n", ret).getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE_NEW);
+            Files.write(file, String.join("\n", ret).getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
         }
         catch (IOException e)
         {

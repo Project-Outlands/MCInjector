@@ -61,6 +61,7 @@ public class ClassInitAdder extends ClassVisitor
         {
             log.fine("  Adding synthetic <init>");
             MethodVisitor mv = this.visitMethod(ACC_PRIVATE, "<init>", "()V", null, null);
+            mv.visitCode();
             mv.visitVarInsn(ALOAD, 0);
             mv.visitMethodInsn(INVOKESPECIAL, this.superName, "<init>", "()V", false);
 
@@ -98,6 +99,7 @@ public class ClassInitAdder extends ClassVisitor
             mv.visitLdcInsn("Synthetic constructor added by MCP, do not call");
             mv.visitMethodInsn(INVOKESPECIAL, "java/lang/RuntimeException", "<init>", "(Ljava/lang/String;)V", false);
             mv.visitInsn(ATHROW);
+            mv.visitEnd();
         }
         super.visitEnd();
     }

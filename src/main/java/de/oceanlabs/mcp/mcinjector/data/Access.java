@@ -56,7 +56,21 @@ public enum Access
                     return;
 
                 int idx = line.indexOf(' ');
-                Level level = Level.valueOf(line.substring(0, idx));
+                if (idx == -1)
+                {
+                    MCInjector.LOG.warning("    Illegal Access Config Line: " + line);
+                    return;
+                }
+                Level level;
+                try
+                {
+                    level = Level.valueOf(line.substring(0, idx));
+                }
+                catch (IllegalArgumentException e)
+                {
+                    MCInjector.LOG.warning("    Illegal Access Config Line: " + line);
+                    return;
+                }
                 String key = line.substring(idx + 1);
                 MCInjector.LOG.fine("    Access loaded " + level + " " + key);
                 this.changes.put(key, level);
@@ -79,7 +93,7 @@ public enum Access
             .sorted((e1, e2) -> e1.getKey().compareTo(e2.getKey()))
             .map(e -> e.getValue() + " " + e.getKey())
             .collect(Collectors.toList());
-            Files.write(file, String.join("\n", ret).getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE_NEW);
+            Files.write(file, String.join("\n", ret).getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
         }
         catch (IOException e)
         {

@@ -9,12 +9,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
+import java.util.regex.Pattern;
 
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
+import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LocalVariableNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -26,13 +28,17 @@ import de.oceanlabs.mcp.mcinjector.data.Exceptions;
 
 public class ApplyMap extends ClassVisitor
 {
+    private static final Pattern SRG_NAME = Pattern.compile("func_\\d+_.+");
+
     String className;
     MCInjectorImpl injector;
+    ClassNode node;
 
-    public ApplyMap(MCInjectorImpl injector, ClassVisitor cn)
+    public ApplyMap(MCInjectorImpl injector, ClassVisitor cn, ClassNode node)
     {
         super(Opcodes.ASM9, cn);
         this.injector = injector;
+        this.node = node;
     }
 
     @Override
@@ -65,7 +71,14 @@ public class ApplyMap extends ClassVisitor
             public void visitEnd()
             {
                 super.visitEnd();
-                processLVT(className, name, desc, MCInjectorImpl.getMethodNode(mv));
+                for (MethodNode mn : node.methods)
+                {
+                    if (mn.name.equals(name) && mn.desc.equals(desc))
+                    {
+                        processLVT(className, name, desc, mn);
+                        break;
+                    }
+                }
             }
         };
     }
@@ -81,7 +94,8 @@ public class ApplyMap extends ClassVisitor
                 set.add(s);
         }
 
-        if (set.size() > (exceptions == null ? 0 : exceptions.length))
+        boolean changed = exceptions == null ? !set.isEmpty() : !set.equals(new HashSet<>(Arrays.asList(exceptions)));
+        if (changed)
         {
             exceptions = set.stream().sorted().toArray(x -> new String[x]);
             Exceptions.INSTANCE.setExceptions(cls, name, desc, exceptions);
@@ -99,7 +113,7 @@ public class ApplyMap extends ClassVisitor
         if ((mn.access & Opcodes.ACC_STATIC) == 0)
         {
             types.add(Type.getType("L" + cls + ";"));
-            params.add(0, "this");
+            params.add("this");
         }
 
         types.addAll(Arrays.asList(Type.getArgumentTypes(mn.desc)));
@@ -109,8 +123,8 @@ public class ApplyMap extends ClassVisitor
             return;
 
         MCInjector.LOG.fine("    Generating map:");
-        String nameFormat = "p_" + name + "_%d_";
-        if (name.matches("func_\\d+_.+")) // A srg name method params are just p_MethodID_ParamIndex_
+        String nameFormat = "p_" + name + "_%s_";
+        if (SRG_NAME.matcher(name).matches()) // A srg name method params are just p_MethodID_ParamIndex_
             nameFormat = "p_" + name.substring(5, name.indexOf('_', 5)) + "_%s_";
         else if (name.equals("<init>")) // Every constructor is given a unique ID, try to load the ID from the map, if none is found assign a new one
             nameFormat = "p_i" + Constructors.INSTANCE.getID(className, desc, types.size() > 1) + "_%s_";
@@ -133,11 +147,6 @@ public class ApplyMap extends ClassVisitor
         }
 
         MCInjector.LOG.fine("    Applying map:");
-        if (params.size() != types.size())
-        {
-            MCInjector.LOG.log(Level.SEVERE, "    Incorrect argument count: " + types.size() + " -> " + params.size());
-            throw new RuntimeException("Incorrect argument count: " + types.size() + " -> " + params.size());
-        }
 
         // Add labels to the start and end if they are not already labels
         AbstractInsnNode tmp = mn.instructions.getFirst();
@@ -188,6 +197,6 @@ public class ApplyMap extends ClassVisitor
             y += types.get(x).getSize();
         }
 
-        Collections.sort(mn.localVariables, (o1, o2) -> o1.index < o2.index ? -1 : (o1.index == o2.index ? 0 : 1));
+        Collections.sort(mn.localVariables, (o1, o2) -> Integer.compare(o1.index, o2.index));
     }
 }

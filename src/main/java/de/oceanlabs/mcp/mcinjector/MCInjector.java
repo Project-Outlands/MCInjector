@@ -1,10 +1,7 @@
 package de.oceanlabs.mcp.mcinjector;
-import static joptsimple.internal.Reflection.invoke;
 
 import java.io.IOException;
 import java.io.PrintStream;
-import java.lang.reflect.Method;
-import java.nio.file.FileSystem;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Locale;
@@ -63,10 +60,11 @@ public class MCInjector
     {
         MCInjector.LOG.addHandler(new Handler()
         {
+            private final LogFormatter formatter = new LogFormatter();
             @Override
             public void publish(LogRecord record)
             {
-                stream.println(String.format(record.getMessage(), record.getParameters()));
+                stream.println(formatter.formatMessage(record));
             }
             @Override public void flush() {}
             @Override public void close() throws SecurityException {}
@@ -161,7 +159,7 @@ public class MCInjector
         }
     };
 
-    public static void main(String[] args) throws Exception
+    public static void main(String[] args) throws IOException
     {
         OptionParser parser = new OptionParser();
         OptionSpec<Void>      help   = parser.accepts("help")   .forHelp();
@@ -234,6 +232,7 @@ public class MCInjector
         {
             parser.printHelpOn(System.out);
             e.printStackTrace();
+            System.exit(1);
         }
     }
 }

@@ -14,25 +14,15 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.MethodNode;
 
-import de.oceanlabs.mcp.mcinjector.MCInjectorImpl;
-
 public class ParameterAnnotationFixer extends ClassVisitor
 {
     private static final Logger LOGGER = Logger.getLogger("MCInjector");
+    private ClassNode cls;
 
-    public ParameterAnnotationFixer(ClassVisitor cn, MCInjectorImpl mci)
+    public ParameterAnnotationFixer(ClassVisitor cn, ClassNode cls)
     {
         super(Opcodes.ASM9, cn);
-        // Extra version check, since these were added in ASM 6.1 and there
-        // isn't a constant for it
-        try {
-            MethodNode.class.getField("visibleAnnotableParameterCount");
-            MethodNode.class.getField("invisibleAnnotableParameterCount");
-        } catch (Exception ex) {
-            throw new IllegalArgumentException(
-                    "AnnotableParameterCount fields are not present -- wrong ASM version?",
-                    ex);
-        }
+        this.cls = cls;
     }
 
     @Override
@@ -40,7 +30,6 @@ public class ParameterAnnotationFixer extends ClassVisitor
     {
         super.visitEnd();
 
-        ClassNode cls = MCInjectorImpl.getClassNode(cv);
         Type[] syntheticParams = getExpectedSyntheticParams(cls);
         if (syntheticParams != null)
         {

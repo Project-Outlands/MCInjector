@@ -12,10 +12,10 @@ import org.objectweb.asm.Opcodes;
 public class InnerClassInitAdder extends ClassVisitor
 {
     private static final Logger log = Logger.getLogger("MCInjector");
-    private String className, parentName, parentField;
+    private String className, superName, parentName, parentField;
     private boolean hasInit = false;
     private boolean isStatic = false;
-    private int FIELD_ACCESS = ACC_FINAL | ACC_SYNTHETIC;
+    private static final int FIELD_ACCESS = ACC_FINAL | ACC_SYNTHETIC;
 
     public InnerClassInitAdder(ClassVisitor cv)
     {
@@ -25,8 +25,8 @@ public class InnerClassInitAdder extends ClassVisitor
     @Override
     public void visit(int version, int access, String name, String signature, String superName, String[] interfaces)
     {
-        this.isStatic = (access & ACC_STATIC) != 0;
         this.className = name;
+        this.superName = superName;
         super.visit(version, access, name, signature, superName, interfaces);
     }
 
@@ -36,6 +36,7 @@ public class InnerClassInitAdder extends ClassVisitor
         if (this.className.equals(name))
         {
             this.parentName = "L" + outerName + ";";
+            this.isStatic = (access & ACC_STATIC) != 0;
         }
         super.visitInnerClass(name, outerName, innerName, access);
     }
@@ -67,10 +68,14 @@ public class InnerClassInitAdder extends ClassVisitor
         {
             log.fine("  Adding synthetic <init> " + parentName + " " + parentField);
             MethodVisitor mv = this.visitMethod(ACC_PRIVATE | ACC_SYNTHETIC, "<init>", "(" + parentName + ")V", null, null);
+            mv.visitCode();
+            mv.visitVarInsn(ALOAD, 0);
+            mv.visitMethodInsn(INVOKESPECIAL, this.superName, "<init>", "()V", false);
             mv.visitVarInsn(ALOAD, 0);
             mv.visitVarInsn(ALOAD, 1);
             mv.visitFieldInsn(PUTFIELD, className, parentField, parentName);
             mv.visitInsn(RETURN);
+            mv.visitEnd();
         }
         super.visitEnd();
     }

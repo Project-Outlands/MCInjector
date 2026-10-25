@@ -33,7 +33,7 @@ public enum Exceptions
                 int idx = line.indexOf(' ', line.indexOf(' ') + 1);
                 if (idx == -1)
                 {
-                    MCInjector.LOG.warning("    Illegal Access Config Line: " + line);
+                    MCInjector.LOG.warning("    Illegal Exceptions Config Line: " + line);
                     return;
                 }
 
@@ -60,7 +60,7 @@ public enum Exceptions
             .sorted((e1, e2) -> e1.getKey().compareTo(e2.getKey()))
             .map(e -> e.getKey() + " " + String.join(" ", e.getValue()))
             .collect(Collectors.toList());
-            Files.write(file, String.join("\n", ret).getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE_NEW);
+            Files.write(file, String.join("\n", ret).getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
         }
         catch (IOException e)
         {

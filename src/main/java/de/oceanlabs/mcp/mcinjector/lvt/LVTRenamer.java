@@ -9,16 +9,18 @@ import org.objectweb.asm.tree.LocalVariableNode;
 import org.objectweb.asm.tree.MethodNode;
 
 import de.oceanlabs.mcp.mcinjector.MCInjector;
-import de.oceanlabs.mcp.mcinjector.MCInjectorImpl;
 
 public abstract class LVTRenamer extends ClassVisitor
 {
     private static final boolean DEBUG = Boolean.parseBoolean(System.getProperty("mci.printLVTRenames", "false"));
+    private static final char SNOWMAN = 0x2603; // MCP marks meaningless LVT names with a snowman
     String className;
+    ClassNode node;
 
-    public LVTRenamer(ClassVisitor cn)
+    public LVTRenamer(ClassVisitor cn, ClassNode node)
     {
         super(Opcodes.ASM9, cn);
+        this.node = node;
     }
 
     @Override
@@ -32,8 +34,7 @@ public abstract class LVTRenamer extends ClassVisitor
     public void visitEnd() {
         super.visitEnd();
 
-        ClassNode cls = MCInjectorImpl.getClassNode(cv);
-        for (final MethodNode mn : cls.methods)
+        for (final MethodNode mn : node.methods)
         {
             if (mn.localVariables != null && mn.localVariables.size() > 0)
             {
@@ -47,7 +48,7 @@ public abstract class LVTRenamer extends ClassVisitor
                         int o1Start = mn.instructions.indexOf(o1.start);
                         int o2Start = mn.instructions.indexOf(o2.start);
                         if (o1Start < o2Start) return -1;
-                        if (o2Start > o2Start) return 1;
+                        if (o1Start > o2Start) return 1;
                         return 0;
                     }
 
@@ -55,7 +56,7 @@ public abstract class LVTRenamer extends ClassVisitor
 
                 for (LocalVariableNode lvn : mn.localVariables)
                 {
-                    if (0x2603 != lvn.name.charAt(0)) // Snowmen, added in 1.8.2? rename them to FF names
+                    if (lvn.name.isEmpty() || SNOWMAN != lvn.name.charAt(0)) // Only rename MCP's snowman markers
                         continue;
                     String name = getNewName(mn, lvn);
                     if (DEBUG)
