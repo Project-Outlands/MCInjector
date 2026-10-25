@@ -9,10 +9,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
@@ -88,7 +86,7 @@ public class MCInjectorImpl
 
     private void processJar(Path inFile, Path outFile) throws IOException
     {
-        Set<String> entries = new HashSet<>();
+        boolean hasAbstractParameterNames = false;
         byte[] data = new byte[4096];
         try (ZipInputStream inJar = new ZipInputStream(new BufferedInputStream(Files.newInputStream(inFile))))
         {
@@ -107,40 +105,44 @@ public class MCInjectorImpl
                         continue;
                     }
 
-                    ByteArrayOutputStream entryBuffer = new ByteArrayOutputStream();
-
-                    int len;
-                    while ((len = inJar.read(data)) != -1)
-                    {
-                        entryBuffer.write(data, 0, len);
-                    }
-
-                    byte[] entryData = entryBuffer.toByteArray();
+                    if ("fernflower_abstract_parameter_names.txt".equals(entryName))
+                        hasAbstractParameterNames = true;
 
                     boolean mojang = entryName.startsWith("net/minecraft/") || entryName.startsWith("com/mojang/");
-
-                    if (entryName.endsWith(".class") && mojang) //TODO: Remove this hardcoding? SRG input? process all?
-                    {
-                        MCInjector.LOG.log(Level.INFO, "Processing " + entryName);
-
-                        entryData = this.processClass(entryData, outFile == null);
-
-                        MCInjector.LOG.log(Level.INFO, "Processed " + entryBuffer.size() + " -> " + entryData.length);
-                    }
-                    else
-                    {
-                        MCInjector.LOG.log(Level.INFO, "Copying " + entryName);
-                    }
 
                     ZipEntry newEntry = new ZipEntry(entryName);
                     newEntry.setTime(0); //Stabilize time.
                     outJar.putNextEntry(newEntry);
-                    outJar.write(entryData);
+
+                    if (entryName.endsWith(".class") && mojang) //TODO: Remove this hardcoding? SRG input? process all?
+                    {
+                        MCInjector.LOG.log(Level.FINE, "Processing " + entryName);
+
+                        ByteArrayOutputStream entryBuffer = new ByteArrayOutputStream(Math.max((int)entry.getSize(), 32));
+                        int len;
+                        while ((len = inJar.read(data)) != -1)
+                        {
+                            entryBuffer.write(data, 0, len);
+                        }
+
+                        byte[] entryData = this.processClass(entryBuffer.toByteArray(), outFile == null);
+
+                        MCInjector.LOG.log(Level.FINE, "Processed " + entryBuffer.size() + " -> " + entryData.length);
+                        outJar.write(entryData);
+                    }
+                    else
+                    {
+                        MCInjector.LOG.log(Level.FINE, "Copying " + entryName);
+                        int len;
+                        while ((len = inJar.read(data)) != -1)
+                        {
+                            outJar.write(data, 0, len);
+                        }
+                    }
                     outJar.closeEntry();
-                    entries.add(entryName);
                 }
 
-                if (!abstractParameters.isEmpty() && !entries.contains("fernflower_abstract_parameter_names.txt"))
+                if (!abstractParameters.isEmpty() && !hasAbstractParameterNames)
                 {
                     ZipEntry newEntry = new ZipEntry("fernflower_abstract_parameter_names.txt");
                     newEntry.setTime(0); //Stabilize time.
