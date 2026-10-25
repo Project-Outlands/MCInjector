@@ -1,12 +1,17 @@
 plugins {
   //id 'net.minecrell.licenser' version '0.3'
-  id 'org.ajoberstar.grgit' version '4.1.1'
+  id 'org.ajoberstar.grgit' version '5.3.3'
   id 'com.gradleup.shadow' version '9.6.1'
 }
 
 apply plugin: 'java'
 apply plugin: 'eclipse'
 apply plugin: 'maven-publish'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
 
 group = 'de.oceanlabs.mcp'
 version = gitVersion()
@@ -20,7 +25,10 @@ repositories {
 }
 
 def gitVersion() {
-    def desc = grgit.describe(longDescr: true, tags: true).split('-') as List
+    def describe = grgit.describe(longDescr: true, tags: true)
+    if (describe == null)
+        return '0.0.0'
+    def desc = describe.split('-') as List
     def hash = desc.remove(desc.size() - 1)
     def offset = desc.remove(desc.size() - 1)
     def tag = desc.join('-')
@@ -44,24 +52,17 @@ task sourceJar(type: Jar) {
     from sourceSets.main.allJava
 }
 
-artifacts {
-    archives jar
-    archives shadowJar
-    archives sourceJar
-}
+assemble.dependsOn jar, shadowJar, sourceJar
 
 def changelog = file('build/changelog.txt')
-def changelog_named = CHANGELOG
 if (changelog.exists()) {
     CHANGELOG.write(changelog.text)
-    artifacts.archives CHANGELOG
 }
 
 dependencies {
     implementation 'org.ow2.asm:asm:9.10.1'
     implementation 'org.ow2.asm:asm-tree:9.10.1'
     implementation 'net.sf.jopt-simple:jopt-simple:5.0.4'
-    implementation 'com.google.code.gson:gson:2.10.1'
 }
 
 publishing {
@@ -73,7 +74,7 @@ publishing {
                 artifact source: CHANGELOG, classifier: 'changelog'
             pom {
                 name = 'MCInjector'
-                description = 'Utility for cleaning up Minecraft jar files for decompolation'
+                description = 'Utility for cleaning up Minecraft jar files for decompilation'
                 url = 'https://github.com/ModCoderPack/MCInjector'
                 scm {
                     url = 'https://github.com/ModCoderPack/MCInjector'
@@ -123,7 +124,7 @@ publishing {
                 }
                 url 'https://maven.outlands.top/releases'
             } else {
-                url 'file://' + project.file('repo').getAbsolutePath()
+                url = project.uri(project.file('repo'))
             }
         }
     }
