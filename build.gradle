@@ -1,6 +1,5 @@
 plugins {
   //id 'net.minecrell.licenser' version '0.3'
-  id 'org.ajoberstar.grgit' version '5.3.3'
   id 'com.gradleup.shadow' version '9.6.1'
 }
 
@@ -24,16 +23,41 @@ repositories {
     mavenCentral()
 }
 
+def gitCmd(List<String> args) {
+    def result = providers.exec {
+        commandLine(['git'] + args)
+        ignoreExitValue = true
+    }
+    return result.standardOutput.asText.get().trim()
+}
+
 def gitVersion() {
-    def describe = grgit.describe(longDescr: true, tags: true)
-    if (describe == null)
+    def describe = null
+    try {
+        describe = gitCmd(['describe', '--long', '--tags'])
+    } catch (Exception ignored) {
+    }
+    if (!describe)
         return '0.0.0'
-    def desc = describe.split('-') as List
-    def hash = desc.remove(desc.size() - 1)
-    def offset = desc.remove(desc.size() - 1)
-    def tag = desc.join('-')
-    def branch = grgit.branch.current().name 
-    return "${tag}.${offset}${t -> if (branch != 'master') t << '-' + branch}"
+
+    // `git describe --long` yields <tag>-<commits>-g<hash>, or just <tag> when HEAD is tagged.
+    def version = describe
+    def m = describe =~ /^(.*)-(\d+)-g([0-9a-f]+)$/
+    if (m.matches()) {
+        def offset = m.group(2)
+        version = offset == '0' ? m.group(1) : "${m.group(1)}.${offset}"
+    }
+
+    // Tag builds run from a detached HEAD, which has no branch name to append.
+    def branch = null
+    try {
+        branch = gitCmd(['rev-parse', '--abbrev-ref', 'HEAD'])
+    } catch (Exception ignored) {
+    }
+    if (branch && branch != 'master' && branch != 'HEAD')
+        version += '-' + branch
+
+    return version
 }
 
 jar {
@@ -117,15 +141,28 @@ publishing {
     }
     repositories {
         maven {
-            if (project.hasProperty('mavenPassword')) {
+            name = 'outlands'
+            url = 'https://maven.outlands.top/releases'
+            def user = project.findProperty('mavenUser') ?: System.getenv('MAVEN_USER')
+            def pass = project.findProperty('mavenPassword') ?: System.getenv('MAVEN_PASSWORD')
+            if (user && pass) {
                 credentials {
-                    username = project.properties.mavenUser
-                    password = project.properties.mavenPassword 
+                    username = user
+                    password = pass
                 }
-                url 'https://maven.outlands.top/releases'
-            } else {
-                url = project.uri(project.file('repo'))
             }
+        }
+    }
+}
+
+gradle.taskGraph.whenReady { graph ->
+    if (graph.allTasks.any { it instanceof PublishToMavenRepository }) {
+        def user = project.findProperty('mavenUser') ?: System.getenv('MAVEN_USER')
+        def pass = project.findProperty('mavenPassword') ?: System.getenv('MAVEN_PASSWORD')
+        if (!user || !pass) {
+            throw new GradleException(
+                'Missing Outlands credentials. Set -PmavenUser/-PmavenPassword or ' +
+                'the MAVEN_USER/MAVEN_PASSWORD environment variables.')
         }
     }
 }
