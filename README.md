@@ -1,5 +1,4 @@
-MCInjector
-==========
+# MCInjector
 
 Utility for cleaning up Minecraft jar files for decompilation.
 
