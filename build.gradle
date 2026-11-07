@@ -1,5 +1,6 @@
 plugins {
   id 'com.gradleup.shadow' version '9.6.1'
+  id 'net.neoforged.gradleutils' version '6.0.0'
 }
 
 apply plugin: 'java'
@@ -12,51 +13,22 @@ java {
 }
 
 group = 'de.oceanlabs.mcp'
-version = gitVersion()
+version = gradleutils.version
 
-ext {
-    CHANGELOG = file("build/${project.name}-${project.version}-changelog.txt")
+gradleutils {
+    version {
+        branches {
+            suffixBranch()
+        }
+    }
+}
+
+changelog {
+    from '3.1'
 }
 
 repositories {
     mavenCentral()
-}
-
-def gitCmd(List<String> args) {
-    def result = providers.exec {
-        commandLine(['git'] + args)
-        ignoreExitValue = true
-    }
-    return result.standardOutput.asText.get().trim()
-}
-
-def gitVersion() {
-    def describe = null
-    try {
-        describe = gitCmd(['describe', '--long', '--tags'])
-    } catch (Exception ignored) {
-    }
-    if (!describe)
-        return '0.0.0'
-
-    // `git describe --long` yields <tag>-<commits>-g<hash>, or just <tag> when HEAD is tagged.
-    def version = describe
-    def m = describe =~ /^(.*)-(\d+)-g([0-9a-f]+)$/
-    if (m.matches()) {
-        def offset = m.group(2)
-        version = offset == '0' ? m.group(1) : "${m.group(1)}.${offset}"
-    }
-
-    // Tag builds run from a detached HEAD, which has no branch name to append.
-    def branch = null
-    try {
-        branch = gitCmd(['rev-parse', '--abbrev-ref', 'HEAD'])
-    } catch (Exception ignored) {
-    }
-    if (branch && branch != 'master' && branch != 'HEAD')
-        version += '-' + branch
-
-    return version
 }
 
 jar {
@@ -77,11 +49,6 @@ task sourceJar(type: Jar) {
 
 assemble.dependsOn jar, shadowJar, sourceJar
 
-def changelog = file('build/changelog.txt')
-if (changelog.exists()) {
-    CHANGELOG.write(changelog.text)
-}
-
 dependencies {
     implementation 'org.ow2.asm:asm:9.11.1'
     implementation 'org.ow2.asm:asm-tree:9.11.1'
@@ -93,8 +60,6 @@ publishing {
         mavenJava(MavenPublication) {
             from components.java
             artifact sourceJar
-            if (CHANGELOG.exists())
-                artifact source: CHANGELOG, classifier: 'changelog'
             pom {
                 name = 'MCInjector'
                 description = 'Utility for cleaning up Minecraft jar files for decompilation'
